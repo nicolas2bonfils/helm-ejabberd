@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config
+  labels:
+    {{- include "ejabberd.labels" . | nindent 4 }}
+data:
+  ejabberd.yml: |-
+    {{- if .Values.config }}
+      {{- printf "%s" (tpl .Values.config $) | nindent 4 }}
+    {{- else }}
+      {{- tpl (.Files.Get "configs/ejabberd.yaml") . | nindent 4 }}
+    {{- end }}

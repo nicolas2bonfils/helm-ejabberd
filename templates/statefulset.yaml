@@ -1,0 +1,145 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ejabberd.fullname" . }}
+  labels:
+    {{- include "ejabberd.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ejabberd.selectorLabels" . | nindent 6 }}
+  updateStrategy:
+    type: RollingUpdate
+  serviceName: {{ .Chart.Name }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "ejabberd.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "ejabberd.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-c", "/home/ejabberd/cluster/cluster.sh"]
+          env:
+            - name: CTL_ON_CREATE
+              value: {{ .Values.env.command.onCreate }}
+            - name: CTL_ON_START
+              value: {{ .Values.env.command.onStart }}
+          ports:
+            - name: mqtt
+              containerPort: 1883
+              protocol: TCP
+            - name: https
+              containerPort: 5443
+              protocol: TCP
+            - name: http
+              containerPort: 5280
+              protocol: TCP
+            - name: s2s
+              containerPort: 5269
+              protocol: TCP
+            - name: c2s
+              containerPort: 5222
+              protocol: TCP
+          readinessProbe:
+            tcpSocket:
+              port: c2s
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: databases
+              mountPath: /home/ejabberd/databases/
+            - name: uploads
+              mountPath: /home/ejabberd/uploads/
+            - name: config
+              mountPath: /home/ejabberd/conf/ejabberd.yml
+              subPath: ejabberd.yml
+            - name: startup
+              mountPath: /home/ejabberd/cluster/
+            #{  { - to  Yaml .Values.volumeMounts  | nindent 12 }  }
+      volumes:
+        - name: config
+          configMap:
+            name: config
+            items:
+              - key: ejabberd.yml
+                path: ejabberd.yml
+        - name: startup
+          configMap:
+            name: startup
+            defaultMode: 0755
+        - name: databases
+          {{- if and .Values.persistence.databases.enabled .Values.persistence.databases.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.databases.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: uploads
+          {{- if and .Values.persistence.uploads.enabled .Values.persistence.uploads.existingClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.uploads.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        #{  { - to Yaml .Values.volumes  | nindent 8 }  }
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    {{ if and .Values.persistence.databases.enabled (not .Values.persistence.databases.existingClaim) }}
+    - metadata:
+        name: databases
+      spec:
+        accessModes:
+          - {{ .Values.persistence.databases.accessMode | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.databases.size | quote }}
+        {{- if .Values.persistence.databases.storageClass }}
+        storageClassName: {{ .Values.persistence.databases.storageClass | quote }}
+        {{- end }}
+    {{ end }}
+    {{ if and .Values.persistence.uploads.enabled (not .Values.persistence.uploads.existingClaim) }}
+    - metadata:
+        name: uploads
+      spec:
+        accessModes:
+          - {{ .Values.persistence.uploads.accessMode | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.uploads.size | quote }}
+        {{- if .Values.persistence.uploads.storageClass }}
+        storageClassName: {{ .Values.persistence.uploads.storageClass | quote }}
+        {{- end }}
+    {{ end }}

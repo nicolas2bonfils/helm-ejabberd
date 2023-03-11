@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ejabberd.fullname" . }}
+  labels:
+    {{- include "ejabberd.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: mqtt
+      port: 1883
+      targetPort: 1883
+    - name: c2s
+      port: 5222
+      targetPort: 5222
+    - name: s2s
+      port: 5269
+      targetPort: 5269
+    - name: http
+      port: 5280
+      targetPort: 5280
+    - name: https
+      targetPort: 5443
+      port: 5443
+  selector:
+    {{- include "ejabberd.selectorLabels" . | nindent 4 }}
